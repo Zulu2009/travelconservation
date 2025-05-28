@@ -1,25 +1,49 @@
 import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ThemeProvider } from '@mui/material/styles';
+import { CssBaseline } from '@mui/material';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { theme } from './theme';
+import Layout from './components/layout/Layout';
+import Home from './pages/Home/Home';
+import Directory from './pages/Directory/Directory';
+import PersonaPlanner from './pages/PersonaPlanner/PersonaPlanner';
+import NerdMode from './pages/NerdMode/NerdMode';
+import Profile from './pages/Profile/Profile';
+import ListingDetail from './pages/Directory/ListingDetail';
+import AuthProvider from './components/auth/AuthProvider';
+
+// Create a client for React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <AuthProvider>
+          <Router>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/directory" element={<Directory />} />
+                <Route path="/directory/:id" element={<ListingDetail />} />
+                <Route path="/persona-planner" element={<PersonaPlanner />} />
+                <Route path="/nerd-mode" element={<NerdMode />} />
+                <Route path="/profile" element={<Profile />} />
+              </Routes>
+            </Layout>
+          </Router>
+        </AuthProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 
