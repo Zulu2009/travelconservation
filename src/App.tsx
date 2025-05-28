@@ -11,6 +11,8 @@ import PersonaPlanner from './pages/PersonaPlanner/PersonaPlanner';
 import NerdMode from './pages/NerdMode/NerdMode';
 import Profile from './pages/Profile/Profile';
 import ListingDetail from './pages/Directory/ListingDetail';
+import SignIn from './pages/Auth/SignIn';
+import SignUp from './pages/Auth/SignUp';
 import AuthProvider from './components/auth/AuthProvider';
 
 // Create a client for React Query
@@ -38,6 +40,8 @@ function App() {
                 <Route path="/persona-planner" element={<PersonaPlanner />} />
                 <Route path="/nerd-mode" element={<NerdMode />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/auth/signin" element={<SignIn />} />
+                <Route path="/auth/signup" element={<SignUp />} />
               </Routes>
             </Layout>
           </Router>
