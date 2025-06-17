@@ -7,8 +7,9 @@ import {
   Divider,
   Alert,
   Container,
+  Chip,
 } from '@mui/material';
-import { Google as GoogleIcon } from '@mui/icons-material';
+import { Google as GoogleIcon, Info as InfoIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../components/auth/AuthProvider';
 
@@ -17,16 +18,40 @@ const SignIn: React.FC = () => {
   const { signInWithGoogle } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
       setError(null);
+      setDebugInfo(null);
+      
+      console.log('Attempting Google sign-in...');
+      console.log('Current domain:', window.location.hostname);
+      console.log('Current URL:', window.location.href);
+      
       await signInWithGoogle();
       navigate('/');
     } catch (error: any) {
       console.error('Error signing in with Google:', error);
-      setError(error.message || 'Failed to sign in with Google');
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      
+      // Set debug info for development
+      setDebugInfo(`Domain: ${window.location.hostname} | Code: ${error.code}`);
+      
+      // Provide user-friendly error messages
+      if (error.code === 'auth/unauthorized-domain') {
+        setError(`Domain "${window.location.hostname}" is not authorized. This is a configuration issue that needs to be fixed in Firebase Console.`);
+      } else if (error.code === 'auth/popup-blocked') {
+        setError('Pop-up was blocked by your browser. Please enable pop-ups and try again.');
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        setError('Sign-in was cancelled. Please try again.');
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in popup was closed. Please try again.');
+      } else {
+        setError(error.message || 'Failed to sign in with Google');
+      }
     } finally {
       setLoading(false);
     }

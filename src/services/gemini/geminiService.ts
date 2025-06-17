@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Persona, ChatMessage, TripPlan } from '../../types';
-import { getPersonaById } from '../../data/personas';
+import { ChatMessage, TripPlan } from '../../types';
+import { personas, Persona } from '../../data/personas';
 
 // Initialize Gemini AI
 const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY || '');
@@ -26,7 +26,7 @@ export class GeminiService {
    */
   static async generatePersonaResponse(request: GeminiChatRequest): Promise<GeminiChatResponse> {
     try {
-      const persona = getPersonaById(request.personaId);
+      const persona = personas.find(p => p.id === request.personaId);
       if (!persona) {
         throw new Error(`Persona not found: ${request.personaId}`);
       }
@@ -62,7 +62,7 @@ export class GeminiService {
    */
   static async* generateStreamingResponse(request: GeminiChatRequest): AsyncGenerator<string, void, unknown> {
     try {
-      const persona = getPersonaById(request.personaId);
+      const persona = personas.find(p => p.id === request.personaId);
       if (!persona) {
         throw new Error(`Persona not found: ${request.personaId}`);
       }
@@ -153,8 +153,8 @@ export class GeminiService {
       description: response.substring(0, 200) + '...',
       duration: 7, // Default duration
       budget: {
-        min: persona.budgetRange[0],
-        max: persona.budgetRange[1],
+        min: 1000,
+        max: 5000,
         currency: 'USD'
       },
       destinations: [],

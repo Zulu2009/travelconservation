@@ -1,0 +1,19 @@
+{"users": [
+{
+  "localId": "uowLaKerXKS07Px4oVLcpt9G63M2",
+  "email": "phill.carter@gmail.com",
+  "emailVerified": true,
+  "displayName": "Phill Carter",
+  "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocLRhxWnIds6XBwBeduJr1KIUNgw-VVy5wUAdyzVJpl8vcYa7TE-EA=s96-c",
+  "lastSignedInAt": "1748464280158",
+  "createdAt": "1748464280158",
+  "providerUserInfo": [
+    {
+      "providerId": "google.com",
+      "rawId": "103605500909210869534",
+      "email": "phill.carter@gmail.com",
+      "displayName": "Phill Carter",
+      "photoUrl": "https://lh3.googleusercontent.com/a/ACg8ocLRhxWnIds6XBwBeduJr1KIUNgw-VVy5wUAdyzVJpl8vcYa7TE-EA=s96-c"
+    }
+  ]
+}]}

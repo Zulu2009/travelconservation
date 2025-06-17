@@ -1,0 +1,115 @@
+# Cloud Workflows - Agentic Vetting System Orchestrator
+# This workflow coordinates the entire operator discovery and vetting process
+
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - project_id: ${sys.get_env("GOOGLE_CLOUD_PROJECT")}
+          - batch_size: 50
+          - max_operators_per_day: 200
+          - start_time: ${sys.now()}
+          
+    - log_start:
+        call: sys.log
+        args:
+          data: ${"Starting agentic vetting process at " + string(start_time)}
+          severity: INFO
+          
+    # Step 1: Discovery Phase
+    - discover_operators:
+        call: http.post
+        args:
+          url: ${"https://us-central1-" + project_id + ".cloudfunctions.net/discoverOperators"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            batch_size: ${batch_size}
+            discovery_sources: ["tier1", "tier2", "monitoring"]
+        result: discovery_result
+        
+    - check_discovery:
+        switch:
+          - condition: ${discovery_result.body.operators_found == 0}
+            next: log_no_operators
+          - condition: ${discovery_result.body.operators_found > max_operators_per_day}
+            assign:
+              - operators_to_process: ${discovery_result.body.operators[:max_operators_per_day]}
+            next: create_scraping_tasks
+        next: create_scraping_tasks
+        
+    - log_no_operators:
+        call: sys.log
+        args:
+          data: "No new operators found for vetting"
+          severity: INFO
+        next: end
+        
+    # Step 2: Create Cloud Tasks for Scraping
+    - create_scraping_tasks:
+        assign:
+          - operators_to_process: ${default(map.get(discovery_result.body, "operators"), [])}
+          - task_results: []
+          
+    - process_operators:
+        for:
+          value: operator
+          in: ${operators_to_process}
+          steps:
+            - create_scraping_task:
+                call: http.post
+                args:
+                  url: ${"https://us-central1-" + project_id + ".cloudfunctions.net/createScrapingTask"}
+                  headers:
+                    Content-Type: "application/json"
+                  body:
+                    operator_id: ${operator.id}
+                    operator_url: ${operator.url}
+                    tier: ${operator.tier}
+                    priority: ${operator.priority}
+                result: task_result
+                
+            - add_to_results:
+                assign:
+                  - task_results: ${list.concat(task_results, [task_result.body])}
+                  
+    # Step 3: Monitor Processing Progress
+    - wait_for_processing:
+        call: sys.sleep
+        args:
+          seconds: 300  # Wait 5 minutes for initial processing
+          
+    - check_processing_status:
+        call: http.get
+        args:
+          url: ${"https://us-central1-" + project_id + ".cloudfunctions.net/getProcessingStatus"}
+        result: status_result
+        
+    - wait_if_processing:
+        switch:
+          - condition: ${status_result.body.status == "processing"}
+            next: wait_for_processing
+        next: generate_summary
+        
+    # Step 4: Generate Processing Summary
+    - generate_summary:
+        call: http.post
+        args:
+          url: ${"https://us-central1-" + project_id + ".cloudfunctions.net/generateVettingSummary"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            start_time: ${start_time}
+            operators_discovered: ${len(operators_to_process)}
+            tasks_created: ${len(task_results)}
+        result: summary_result
+        
+    - log_completion:
+        call: sys.log
+        args:
+          data: ${summary_result.body}
+          severity: INFO
+          
+    - end:
+        return: ${summary_result.body}

@@ -9,7 +9,7 @@ import { getAnalytics } from 'firebase/analytics';
 const firebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY || 'AIzaSyDrgW4eEblv_meou81pCJ1VcpiaB_llt4g',
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || 'travelconservation-b4f04.firebaseapp.com',
-  projectId: 'travelconservation-b4f04',
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || 'travelconservation-b4f04',
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || 'travelconservation-b4f04.firebasestorage.app',
   messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || '1076018123076',
   appId: process.env.REACT_APP_FIREBASE_APP_ID || '1:1076018123076:web:8cf0799de2408810a50711',

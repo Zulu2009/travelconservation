@@ -1,18 +1,39 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can read and write their own user document
+    // Public read access to listings
+    match /listings/{document} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // User data - only accessible by the user themselves
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Anyone can read listings, but only authenticated users can create/update
-    match /listings/{listingId} {
+    // Conversations are private to the user
+    match /conversations/{conversationId} {
+      allow read, write: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Trip plans are private to the user
+    match /tripPlans/{planId} {
+      allow read, write: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+    
+    // Conservation metrics - public read
+    match /conservation-metrics/{document} {
       allow read: if true;
-      allow create, update: if request.auth != null;
-      allow delete: if request.auth != null && 
-        (request.auth.uid == resource.data.createdBy || 
-         request.auth.token.admin == true);
+      allow write: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Personas - public read
+    match /personas/{document} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
     }
     
     // Bookings are private to the user who created them
@@ -35,18 +56,17 @@ service cloud.firestore {
          request.auth.token.admin == true);
     }
     
-    // Personas are public read, admin write
-    match /personas/{personaId} {
-      allow read: if true;
-      allow write: if request.auth != null && 
-        request.auth.token.admin == true;
-    }
-    
     // Analytics data is public read, admin write
     match /analytics/{document=**} {
       allow read: if true;
       allow write: if request.auth != null && 
         request.auth.token.admin == true;
+    }
+    
+    // Operators - public read for directory listing
+    match /operators/{document} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.admin == true;
     }
   }
 }

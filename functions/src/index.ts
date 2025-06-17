@@ -1,6 +1,24 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { analyticsEngine, AnalyticsInput, SupplierMetrics } from './analyticsEngine';
+
+// Import agentic system modules
+import { 
+  discoverOperators, 
+  monitorDiscoverySources, 
+  getProcessingStatus 
+} from './discoveryAgent';
+import { 
+  createScrapingTask, 
+  updateTaskStatus, 
+  getQueueStats, 
+  retryFailedTasks 
+} from './taskManager';
+import { 
+  analyzeOperator, 
+  batchAnalyzeOperators 
+} from './analysisAgent';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -172,6 +190,13 @@ export const generatePersonaResponse = functions.https.onCall(async (data: Perso
     throw new functions.https.HttpsError('internal', 'Failed to generate response');
   }
 });
+
+// TEST FUNCTIONS - Import and export test functions
+export { 
+  testDatabaseConnection, 
+  testDiscovery, 
+  getDatabaseStats 
+} from './testConnection';
 
 /**
  * Cloud Function for streaming persona responses
@@ -349,3 +374,348 @@ async function saveTripPlan(tripPlan: any): Promise<string> {
   const tripPlanRef = await admin.firestore().collection('tripPlans').add(tripPlan);
   return tripPlanRef.id;
 }
+
+// SYSTEM 3 - ANALYTICS ENGINE FUNCTIONS
+// Pure JavaScript calculations, no LLM usage
+
+/**
+ * Triggered when supplier data is created or updated
+ * Automatically calculates metrics using analytics engine
+ */
+export const calculateSupplierMetrics = functions.firestore
+  .document('suppliers/{supplierId}')
+  .onWrite(async (change, context) => {
+    const supplierId = context.params.supplierId;
+    const supplierData = change.after.data();
+    
+    if (!supplierData) {
+      console.log(`Supplier ${supplierId} deleted, skipping metrics calculation`);
+      return;
+    }
+
+    try {
+      console.log(`Calculating metrics for supplier: ${supplierId}`);
+      
+      // Transform Firestore data to AnalyticsInput format
+      const analyticsInput: AnalyticsInput = {
+        supplierId,
+        reviews: supplierData.reviews || {
+          averageRating: 0,
+          totalReviews: 0,
+          recentReviews: []
+        },
+        certifications: supplierData.certifications || [],
+        conservationImpact: supplierData.conservationImpact || {
+          projectsSupported: 0,
+          fundsRaised: 0,
+          speciesProtected: [],
+          communityBenefits: ""
+        },
+        financials: supplierData.financials || {
+          annualRevenue: 1000000, // Default 1M
+          conservationSpending: 0,
+          communitySpending: 0,
+          researchSpending: 0
+        },
+        operations: supplierData.operations || {
+          yearsInOperation: 1,
+          capacity: 20,
+          occupancyRate: 0.7,
+          localStaffPercentage: 50
+        },
+        verification: supplierData.verification || {
+          lastAuditDate: new Date().toISOString(),
+          auditScore: 85,
+          complianceIssues: 0
+        }
+      };
+
+      // Calculate metrics using analytics engine
+      const metrics = analyticsEngine.calculateSupplierMetrics(analyticsInput);
+      
+      // Store calculated metrics
+      await admin.firestore().collection('supplier-metrics').doc(supplierId).set({
+        ...metrics,
+        calculatedAt: new Date().toISOString(),
+        version: '1.0'
+      });
+
+      // Update supplier document with key metrics
+      await admin.firestore().collection('suppliers').doc(supplierId).update({
+        'metrics.trustScore': metrics.trustScore,
+        'metrics.sustainabilityRating': metrics.sustainabilityRating,
+        'metrics.overallScore': metrics.overallScore,
+        'metrics.riskLevel': metrics.riskLevel,
+        'metrics.lastCalculated': new Date().toISOString()
+      });
+
+      console.log(`✅ Metrics calculated for ${supplierId}:`, {
+        trustScore: metrics.trustScore,
+        sustainabilityRating: metrics.sustainabilityRating,
+        overallScore: metrics.overallScore,
+        riskLevel: metrics.riskLevel
+      });
+
+    } catch (error) {
+      console.error(`❌ Error calculating metrics for ${supplierId}:`, error);
+    }
+  });
+
+/**
+ * Batch calculate metrics for all suppliers
+ * Triggered via HTTP request for admin operations
+ */
+export const batchCalculateMetrics = functions.https.onRequest(async (request, response) => {
+  try {
+    console.log('🔄 Starting batch metrics calculation...');
+    
+    const suppliersSnapshot = await admin.firestore().collection('suppliers').get();
+    const suppliers = suppliersSnapshot.docs;
+    
+    console.log(`Found ${suppliers.length} suppliers to process`);
+
+    let processed = 0;
+    let errors = 0;
+    
+    for (const supplierDoc of suppliers) {
+      try {
+        const supplierId = supplierDoc.id;
+        const supplierData = supplierDoc.data();
+        
+        // Transform to AnalyticsInput
+        const analyticsInput: AnalyticsInput = {
+          supplierId,
+          reviews: supplierData.reviews || { averageRating: 0, totalReviews: 0, recentReviews: [] },
+          certifications: supplierData.certifications || [],
+          conservationImpact: supplierData.conservationImpact || {
+            projectsSupported: 0,
+            fundsRaised: 0,
+            speciesProtected: [],
+            communityBenefits: ""
+          },
+          financials: supplierData.financials || {
+            annualRevenue: 1000000,
+            conservationSpending: 0,
+            communitySpending: 0,
+            researchSpending: 0
+          },
+          operations: supplierData.operations || {
+            yearsInOperation: 1,
+            capacity: 20,
+            occupancyRate: 0.7,
+            localStaffPercentage: 50
+          },
+          verification: supplierData.verification || {
+            lastAuditDate: new Date().toISOString(),
+            auditScore: 85,
+            complianceIssues: 0
+          }
+        };
+
+        // Calculate metrics
+        const metrics = analyticsEngine.calculateSupplierMetrics(analyticsInput);
+        
+        // Store metrics
+        await admin.firestore().collection('supplier-metrics').doc(supplierId).set({
+          ...metrics,
+          calculatedAt: new Date().toISOString(),
+          version: '1.0'
+        });
+
+        // Update supplier with key metrics
+        await admin.firestore().collection('suppliers').doc(supplierId).update({
+          'metrics.trustScore': metrics.trustScore,
+          'metrics.sustainabilityRating': metrics.sustainabilityRating,
+          'metrics.overallScore': metrics.overallScore,
+          'metrics.riskLevel': metrics.riskLevel,
+          'metrics.lastCalculated': new Date().toISOString()
+        });
+
+        processed++;
+        console.log(`✅ Processed ${supplierId}: Trust ${metrics.trustScore}, Overall ${metrics.overallScore}`);
+        
+      } catch (error) {
+        errors++;
+        console.error(`❌ Error processing supplier:`, error);
+      }
+    }
+    
+    console.log(`🎉 Batch calculation complete: ${processed} processed, ${errors} errors`);
+    
+    response.json({
+      success: true,
+      processed,
+      errors,
+      message: `Batch calculation complete: ${processed} suppliers processed`
+    });
+    
+  } catch (error) {
+    console.error('❌ Batch calculation failed:', error);
+    response.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// AGENTIC VETTING SYSTEM EXPORTS
+// Export all agentic system functions
+
+// Discovery Agent Functions
+export { 
+  discoverOperators, 
+  monitorDiscoverySources, 
+  getProcessingStatus 
+};
+
+// Task Manager Functions
+export { 
+  createScrapingTask, 
+  updateTaskStatus, 
+  getQueueStats, 
+  retryFailedTasks 
+};
+
+// Analysis Agent Functions
+export { 
+  analyzeOperator, 
+  batchAnalyzeOperators 
+};
+
+// Smart Researcher Function
+export { smartResearcher } from './smartResearcher';
+
+// Database Import Function
+export { importOperators } from './importOperators';
+
+// Vetting Summary Function
+export const generateVettingSummary = functions.https.onRequest(async (request, response) => {
+  try {
+    const { start_time, operators_discovered, tasks_created } = request.body;
+    
+    // Get processing statistics
+    const queueStatsResponse = await fetch(`https://us-central1-${process.env.GOOGLE_CLOUD_PROJECT}.cloudfunctions.net/getQueueStats`);
+    const queueStats = await queueStatsResponse.json();
+    
+    // Get analysis summary
+    const analysisResponse = await fetch(`https://us-central1-${process.env.GOOGLE_CLOUD_PROJECT}.cloudfunctions.net/getAnalyticsSummary`);
+    const analysisData = await analysisResponse.json();
+    
+    const endTime = new Date();
+    const startTime = new Date(start_time);
+    const processingDuration = Math.round((endTime.getTime() - startTime.getTime()) / 1000 / 60); // minutes
+    
+    const summary = {
+      vetting_session: {
+        start_time: start_time,
+        end_time: endTime.toISOString(),
+        duration_minutes: processingDuration
+      },
+      discovery_results: {
+        operators_discovered: operators_discovered || 0,
+        tasks_created: tasks_created || 0
+      },
+      processing_stats: queueStats.success ? queueStats.stats : { error: 'Failed to fetch queue stats' },
+      analysis_summary: analysisData.success ? analysisData.summary : { error: 'Failed to fetch analysis summary' },
+      recommendations: generateRecommendations(operators_discovered, tasks_created, processingDuration)
+    };
+    
+    // Store summary in Firestore
+    await admin.firestore().collection('vetting-summaries').add({
+      ...summary,
+      created_at: admin.firestore.FieldValue.serverTimestamp()
+    });
+    
+    response.json({
+      success: true,
+      summary
+    });
+    
+  } catch (error) {
+    console.error('❌ Error generating vetting summary:', error);
+    response.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+function generateRecommendations(discovered: number, tasksCreated: number, duration: number): string[] {
+  const recommendations = [];
+  
+  if (discovered === 0) {
+    recommendations.push('Consider expanding discovery sources or adjusting search criteria');
+  } else if (discovered > 100) {
+    recommendations.push('High discovery volume - consider implementing additional filtering');
+  }
+  
+  if (duration > 60) {
+    recommendations.push('Processing took longer than expected - consider optimizing queue settings');
+  }
+  
+  if (tasksCreated < discovered * 0.8) {
+    recommendations.push('Some operators may have been filtered out - review discovery criteria');
+  }
+  
+  recommendations.push('Review analysis results and update operator verification status');
+  recommendations.push('Consider scheduling next vetting run based on discovery volume');
+  
+  return recommendations;
+}
+
+/**
+ * Get supplier analytics summary
+ * Returns aggregated metrics and insights
+ */
+export const getAnalyticsSummary = functions.https.onRequest(async (request, response) => {
+  try {
+    const metricsSnapshot = await admin.firestore().collection('supplier-metrics').get();
+    const metrics = metricsSnapshot.docs.map(doc => doc.data() as SupplierMetrics);
+    
+    if (metrics.length === 0) {
+      response.json({
+        success: true,
+        summary: {
+          totalSuppliers: 0,
+          message: 'No supplier metrics found'
+        }
+      });
+      return;
+    }
+    
+    // Calculate aggregate statistics
+    const summary = {
+      totalSuppliers: metrics.length,
+      averageTrustScore: Math.round((metrics.reduce((sum, m) => sum + m.trustScore, 0) / metrics.length) * 10) / 10,
+      averageSustainabilityRating: Math.round((metrics.reduce((sum, m) => sum + m.sustainabilityRating, 0) / metrics.length) * 10) / 10,
+      averageOverallScore: Math.round((metrics.reduce((sum, m) => sum + m.overallScore, 0) / metrics.length) * 10) / 10,
+      riskDistribution: {
+        low: metrics.filter(m => m.riskLevel === 'low').length,
+        medium: metrics.filter(m => m.riskLevel === 'medium').length,
+        high: metrics.filter(m => m.riskLevel === 'high').length
+      },
+      topPerformers: metrics
+        .sort((a, b) => b.overallScore - a.overallScore)
+        .slice(0, 5)
+        .map(m => ({
+          trustScore: m.trustScore,
+          sustainabilityRating: m.sustainabilityRating,
+          overallScore: m.overallScore,
+          riskLevel: m.riskLevel
+        })),
+      lastUpdated: new Date().toISOString()
+    };
+    
+    response.json({
+      success: true,
+      summary
+    });
+    
+  } catch (error) {
+    console.error('❌ Analytics summary failed:', error);
+    response.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});

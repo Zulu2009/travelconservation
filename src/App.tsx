@@ -10,10 +10,13 @@ import Directory from './pages/Directory/Directory';
 import PersonaPlanner from './pages/PersonaPlanner/PersonaPlanner';
 import NerdMode from './pages/NerdMode/NerdMode';
 import Profile from './pages/Profile/Profile';
-import ListingDetail from './pages/Directory/ListingDetail';
+
 import SignIn from './pages/Auth/SignIn';
 import SignUp from './pages/Auth/SignUp';
 import AuthProvider from './components/auth/AuthProvider';
+import SeedButton from './components/Admin/SeedButton';
+import GeminiTest from './components/Debug/GeminiTest';
+import SimpleGeminiTest from './components/Debug/SimpleGeminiTest';
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -36,13 +39,16 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/directory" element={<Directory />} />
-                <Route path="/directory/:id" element={<ListingDetail />} />
+
                 <Route path="/persona-planner" element={<PersonaPlanner />} />
                 <Route path="/nerd-mode" element={<NerdMode />} />
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/auth/signin" element={<SignIn />} />
                 <Route path="/auth/signup" element={<SignUp />} />
+                <Route path="/debug/gemini" element={<GeminiTest />} />
+                <Route path="/debug/simple" element={<SimpleGeminiTest />} />
               </Routes>
+              {process.env.NODE_ENV === 'development' && <SeedButton />}
             </Layout>
           </Router>
         </AuthProvider>
