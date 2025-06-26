@@ -44,11 +44,18 @@ const Directory: React.FC = () => {
   });
 
   // Filter operators based on search term
-  const filteredOperators = operators.filter(operator =>
-    operator.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    operator.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    operator.description.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredOperators = operators.filter(operator => {
+    if (!searchTerm) return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    const name = operator.name || '';
+    const location = operator.location || '';
+    const description = operator.description || '';
+    
+    return name.toLowerCase().includes(searchLower) ||
+           location.toLowerCase().includes(searchLower) ||
+           description.toLowerCase().includes(searchLower);
+  });
 
   const getVerificationColor = (status: string) => {
     switch (status) {
@@ -284,9 +291,9 @@ const Directory: React.FC = () => {
 
                 {/* Description */}
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  {operator.description.length > 150 
+                  {operator.description && operator.description.length > 150 
                     ? `${operator.description.substring(0, 150)}...` 
-                    : operator.description}
+                    : operator.description || 'No description available'}
                 </Typography>
 
                 {/* Status Chips */}

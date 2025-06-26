@@ -42,6 +42,8 @@ import {
   Delete as DeleteIcon
 } from '@mui/icons-material';
 import AgenticSystemPanel from '../../components/Admin/AgenticSystemPanel';
+import EnhancedSeedOperatorsButton from '../../components/Admin/EnhancedSeedOperatorsButton';
+import FirebaseDiagnosticPanel from '../../components/Admin/FirebaseDiagnosticPanel';
 
 // SYSTEM 4 - ADMIN INTERFACE
 // React admin panel for data management, verification workflows, and quality control
@@ -344,6 +346,7 @@ const AdminDashboard: React.FC = () => {
       {/* Tabs */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
+          <Tab label="🌱 Database Seeding" />
           <Tab label="Supplier Management" />
           <Tab label="Verification Queue" />
           <Tab label="Analytics & Reports" />
@@ -352,8 +355,16 @@ const AdminDashboard: React.FC = () => {
         </Tabs>
       </Box>
 
-      {/* Tab 1: Supplier Management */}
+      {/* Tab 0: Database Seeding */}
       <TabPanel value={tabValue} index={0}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <FirebaseDiagnosticPanel />
+          <EnhancedSeedOperatorsButton />
+        </Box>
+      </TabPanel>
+
+      {/* Tab 1: Supplier Management */}
+      <TabPanel value={tabValue} index={1}>
         <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
           <TextField
             placeholder="Search suppliers..."
@@ -469,7 +480,7 @@ const AdminDashboard: React.FC = () => {
       </TabPanel>
 
       {/* Tab 2: Verification Queue */}
-      <TabPanel value={tabValue} index={1}>
+      <TabPanel value={tabValue} index={2}>
         <Alert severity="info" sx={{ mb: 3 }}>
           Review suppliers pending verification. Check their documentation, certifications, and compliance before approval.
         </Alert>
@@ -527,7 +538,7 @@ const AdminDashboard: React.FC = () => {
       </TabPanel>
 
       {/* Tab 3: Analytics & Reports */}
-      <TabPanel value={tabValue} index={2}>
+      <TabPanel value={tabValue} index={3}>
         <Grid container spacing={3}>
           <Grid size={{ xs: 12, md: 6 }}>
             <Card>
@@ -592,7 +603,7 @@ const AdminDashboard: React.FC = () => {
       </TabPanel>
 
       {/* Tab 4: Data Research */}
-      <TabPanel value={tabValue} index={3}>
+      <TabPanel value={tabValue} index={4}>
         <Alert severity="info" sx={{ mb: 3 }}>
           Use GPT-3.5-turbo for cost-effective bulk supplier data extraction and analysis.
         </Alert>
@@ -628,7 +639,7 @@ const AdminDashboard: React.FC = () => {
       </TabPanel>
 
       {/* Tab 5: Agentic System */}
-      <TabPanel value={tabValue} index={4}>
+      <TabPanel value={tabValue} index={5}>
         <AgenticSystemPanel />
       </TabPanel>
 

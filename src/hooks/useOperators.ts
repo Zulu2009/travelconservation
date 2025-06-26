@@ -71,24 +71,37 @@ export const useOperators = (filters?: {
       constraints.push(where('source', '==', filters.source));
     }
 
-    // Default ordering - show verified first, then by trust score
-    constraints.push(orderBy('trustScore', 'desc'));
-
+    // Don't use orderBy initially to avoid index issues
     const q = query(collection(db, 'operators'), ...constraints);
 
     const unsubscribe = onSnapshot(q, 
       (snapshot) => {
-        const operatorsData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          discoveredAt: doc.data().discoveredAt?.toDate(),
-          lastAnalyzed: doc.data().lastAnalyzed?.toDate(),
-        })) as Operator[];
+        const operatorsData = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            // Ensure required fields have defaults
+            trustScore: data.trustScore || 0,
+            sustainabilityRating: data.sustainabilityRating || 0,
+            riskLevel: data.riskLevel || 'medium',
+            verificationStatus: data.verificationStatus || 'pending',
+            discoveredAt: data.discoveredAt?.toDate(),
+            lastAnalyzed: data.lastAnalyzed?.toDate(),
+          };
+        }) as Operator[];
 
-        // Apply trust score filter (client-side)
-        const filteredOperators = filters?.minTrustScore 
+        // Apply trust score filter and sort client-side
+        let filteredOperators = filters?.minTrustScore 
           ? operatorsData.filter(op => op.trustScore >= filters.minTrustScore!)
           : operatorsData;
+
+        // Sort by verification status first, then trust score
+        filteredOperators.sort((a, b) => {
+          if (a.verificationStatus === 'verified' && b.verificationStatus !== 'verified') return -1;
+          if (b.verificationStatus === 'verified' && a.verificationStatus !== 'verified') return 1;
+          return b.trustScore - a.trustScore;
+        });
 
         setOperators(filteredOperators);
         setLoading(false);

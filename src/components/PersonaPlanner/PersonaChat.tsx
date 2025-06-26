@@ -13,11 +13,15 @@ import {
   IconButton,
   Alert
 } from '@mui/material';
-import { Send as SendIcon, Refresh as RefreshIcon, BugReport as BugIcon } from '@mui/icons-material';
+import { Send as SendIcon, Refresh as RefreshIcon, BugReport as BugIcon, Search as SearchIcon } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { generateAIResponse, debugGeminiSetup } from '../../services/googleAI';
 import { Persona } from '../../data/personas';
+import { PersonaDiscoveryEngine } from '../../data/personaDiscoveryPrompts';
+import { WebSearchGemini } from '../../services/webSearchGemini';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../services/firebase/config';
 
 interface ChatMessage {
   id: string;
@@ -40,10 +44,66 @@ const PersonaChat: React.FC<PersonaChatProps> = ({ selectedPersona, onTripRecomm
   const [conversationContext, setConversationContext] = useState<string[]>([]);
   const [debugMode, setDebugMode] = useState(false);
   const [lastError, setLastError] = useState<string>('');
+  const [isSearching, setIsSearching] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const searchVettedDatabase = async (searchQuery: string, personaId: string): Promise<any[]> => {
+    try {
+      console.log(`🔍 Searching vetted database for: ${searchQuery} (${personaId})`);
+      
+      // Get persona-specific search criteria
+      const config = PersonaDiscoveryEngine.getDiscoveryConfig(personaId);
+      const searchFilters = PersonaDiscoveryEngine.getSearchFilters(personaId);
+      
+      // Build Firestore query based on persona preferences
+      const operatorsRef = collection(db, 'operators');
+      let dbQuery = query(operatorsRef, limit(20));
+      
+      // Apply persona-specific filters
+      if (searchFilters.regions && searchFilters.regions.length > 0) {
+        // Search for operators in preferred regions
+        const regionQueries = searchFilters.regions.map(region => 
+          query(operatorsRef, where('location', '>=', region), limit(5))
+        );
+        
+        // Execute all region queries
+        const regionResults = await Promise.all(
+          regionQueries.map(q => getDocs(q))
+        );
+        
+        const allOperators: any[] = [];
+        regionResults.forEach(snapshot => {
+          snapshot.docs.forEach(doc => {
+            allOperators.push({ id: doc.id, ...doc.data() });
+          });
+        });
+        
+        // Remove duplicates
+        const uniqueOperators = allOperators.filter((operator, index, self) =>
+          index === self.findIndex(o => o.id === operator.id)
+        );
+        
+        console.log(`✅ Found ${uniqueOperators.length} operators in vetted database`);
+        return uniqueOperators;
+      } else {
+        // General search
+        const snapshot = await getDocs(dbQuery);
+        const operators = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        
+        console.log(`✅ Found ${operators.length} operators in vetted database`);
+        return operators;
+      }
+    } catch (error) {
+      console.error('❌ Database search failed:', error);
+      return [];
+    }
   };
 
   useEffect(() => {
@@ -73,27 +133,51 @@ const PersonaChat: React.FC<PersonaChatProps> = ({ selectedPersona, onTripRecomm
     try {
       console.log('[PersonaChat] Generating AI response for:', userMessage.substring(0, 50) + '...');
       
+      // 🔥 SEARCH VETTED DATABASE FIRST
+      const databaseOperators = await searchVettedDatabase(userMessage, selectedPersona.id);
+      console.log(`✅ Found ${databaseOperators.length} operators in vetted database`);
+      
+      // Get persona-specific discovery prompt for enhanced responses
+      const personaPrompt = PersonaDiscoveryEngine.generatePersonaPrompt(selectedPersona.id, userMessage);
+      const searchFilters = PersonaDiscoveryEngine.getSearchFilters(selectedPersona.id);
+      
+      // Format database operators for LLM context
+      const operatorContext = databaseOperators.length > 0 
+        ? `\n\nVETTED DATABASE OPERATORS (${databaseOperators.length} found):\n${databaseOperators.map(op => 
+            `• ${op.name || 'Unnamed Operator'} - ${op.location || 'Location TBD'}\n  Description: ${op.description || 'Premium conservation operator'}\n  Specialization: ${op.category || 'Conservation'}\n  Trust Score: ${op.trustScore || 'N/A'}\n`
+          ).join('\n')}`
+        : '\n\nNOTE: No operators found in our vetted database for this specific query. Please provide general recommendations based on your expertise.';
+      
       const contextPrompt = `
-${selectedPersona.systemPrompt}
+${personaPrompt}
 
 CONVERSATION CONTEXT:
 ${conversationContext.slice(-5).join('\n')}
 
-CURRENT USER MESSAGE: "${userMessage}"
+PERSONA-SPECIFIC SEARCH CRITERIA:
+- Operator Types: ${searchFilters.operatorTypes?.join(', ') || 'Any'}
+- Preferred Regions: ${searchFilters.regions?.join(', ') || 'Global'}
+- Price Range: ${searchFilters.priceRange || 'Varies'}
+- Risk Level: ${searchFilters.riskLevel || 'Medium'}
+- Key Keywords: ${searchFilters.keywords?.join(', ') || 'Conservation'}
+${operatorContext}
 
-INSTRUCTIONS:
-- Respond as ${selectedPersona.name} staying completely in character
-- Provide specific, actionable conservation travel recommendations
-- Include real conservation benefits and impact data when possible
-- Ask follow-up questions to better understand their interests
-- Keep responses engaging but focused (200-400 words)
-- If recommending specific locations, include why they match the user's interests
-- Always connect recommendations back to meaningful conservation impact
+🎯 REAL LLM INSTRUCTIONS (CRITICAL):
+- I am ${selectedPersona.name}, an expert in ${selectedPersona.characteristics.focusAreas.join(', ')}
+- First, analyze the VETTED DATABASE OPERATORS above that match the user's query
+- If database operators exist, recommend the BEST ones and explain WHY they fit my expertise
+- If no database matches, provide expert recommendations from my experience
+- Use my specialized knowledge to evaluate conservation impact, authenticity, and value
+- Stay completely in character and provide actionable, expert-level advice
+- Include specific details about conservation programs, impact metrics, and why each fits the user's needs
+- Ask targeted follow-up questions based on my specialized expertise
 
-Your response:`;
+Current user request: "${userMessage}"
+
+My expert response as ${selectedPersona.name}:`;
 
       const aiResponse = await generateAIResponse(contextPrompt);
-      console.log('[PersonaChat] AI response received:', aiResponse.substring(0, 100) + '...');
+      console.log('[PersonaChat] ✅ REAL LLM response with database context received');
       return aiResponse;
       
     } catch (error: any) {
@@ -164,6 +248,89 @@ Your response:`;
       setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleWebSearch = async () => {
+    if (!currentMessage.trim() || isSearching) return;
+
+    const userMsg: ChatMessage = {
+      id: uuidv4(),
+      type: 'user',
+      content: `🔍 Live web search: ${currentMessage}`,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMsg]);
+    const searchQuery = currentMessage;
+    setCurrentMessage('');
+    setIsSearching(true);
+    setLastError('');
+
+    try {
+      console.log(`🔍 Starting live web search for: ${searchQuery}`);
+      
+      // Perform live web search with Gemini
+      const searchResults = await WebSearchGemini.searchWithPersona(
+        selectedPersona.id, 
+        searchQuery
+      );
+      
+      if (searchResults.success) {
+        // Format search results as persona response
+        let searchResponse = `I've just searched the web for "${searchQuery}" using my ${selectedPersona.characteristics.focusAreas.join('/')} expertise!\n\n`;
+        searchResponse += `${searchResults.summary}\n\n`;
+        
+        if (searchResults.operators.length > 0) {
+          searchResponse += `**🎯 Found ${searchResults.operators.length} Operators:**\n\n`;
+          
+          searchResults.operators.slice(0, 5).forEach((operator, index) => {
+            searchResponse += `**${index + 1}. ${operator.name}**\n`;
+            searchResponse += `📍 Location: ${operator.location}\n`;
+            searchResponse += `🎯 Specialization: ${operator.specialization}\n`;
+            searchResponse += `🌱 Conservation Impact: ${operator.conservation_impact}\n`;
+            searchResponse += `💡 Why I recommend: ${operator.why_recommended}\n`;
+            searchResponse += `🔗 Contact: ${operator.contact}\n`;
+            searchResponse += `⭐ Confidence: ${operator.confidence_score}/10\n\n`;
+          });
+          
+          searchResponse += `**📊 Sources searched:** ${searchResults.sources.join(', ')}\n\n`;
+          searchResponse += `What specific aspect of these operators interests you most?`;
+        } else {
+          searchResponse += `I didn't find specific operators matching your exact criteria, but I have some recommendations based on my expertise. Would you like me to suggest some alternative approaches or regions to explore?`;
+        }
+        
+        const searchMsg: ChatMessage = {
+          id: uuidv4(),
+          type: 'persona',
+          content: searchResponse,
+          timestamp: new Date(),
+          isAI: true
+        };
+        
+        setMessages(prev => [...prev, searchMsg]);
+        setConversationContext(prev => [...prev, `User web search: ${searchQuery}`, `${selectedPersona.name}: ${searchResponse}`]);
+        
+      } else {
+        throw new Error(searchResults.error || 'Web search failed');
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Web search error:', error);
+      
+      const errorResponse = `I apologize, but I'm having trouble accessing the web search right now. However, based on my expertise in ${selectedPersona.characteristics.focusAreas.join(', ')}, I can still provide recommendations for "${searchQuery}". Let me share what I know from my experience...`;
+      
+      const errorMsg: ChatMessage = {
+        id: uuidv4(),
+        type: 'persona',
+        content: errorResponse,
+        timestamp: new Date(),
+        error: true
+      };
+      
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -314,13 +481,16 @@ Your response:`;
           </Box>
         ))}
         
-        {isLoading && (
+        {(isLoading || isSearching) && (
           <Box sx={{ display: 'flex', justifyContent: 'flex-start', mb: 2 }}>
             <Card sx={{ bgcolor: 'grey.100' }}>
               <CardContent sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <CircularProgress size={20} />
                 <Typography variant="body2">
-                  {selectedPersona.name} is thinking...
+                  {isSearching 
+                    ? `${selectedPersona.name} is searching the web...` 
+                    : `${selectedPersona.name} is thinking...`
+                  }
                 </Typography>
               </CardContent>
             </Card>
@@ -345,9 +515,24 @@ Your response:`;
             disabled={isLoading}
           />
           <Button
+            variant="outlined"
+            onClick={handleWebSearch}
+            disabled={!currentMessage.trim() || isSearching || isLoading}
+            sx={{ 
+              minWidth: 'auto', 
+              px: 2,
+              bgcolor: 'info.main',
+              color: 'white',
+              '&:hover': { bgcolor: 'info.dark' }
+            }}
+            title="Search the web with my expertise"
+          >
+            <SearchIcon />
+          </Button>
+          <Button
             variant="contained"
             onClick={handleSendMessage}
-            disabled={!currentMessage.trim() || isLoading}
+            disabled={!currentMessage.trim() || isLoading || isSearching}
             sx={{ 
               minWidth: 'auto', 
               px: 2,

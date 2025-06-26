@@ -47,8 +47,14 @@ try {
   ];
 
   geminiModel = genAI.getGenerativeModel({ 
-    model: "gemini-pro",
-    safetySettings
+    model: "gemini-1.5-pro-latest",
+    safetySettings,
+    generationConfig: {
+      temperature: 0.7,
+      topK: 40,
+      topP: 0.95,
+      maxOutputTokens: 8192,
+    }
   });
   
   debugLog('Gemini AI initialized successfully');

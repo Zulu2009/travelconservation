@@ -10,6 +10,7 @@ import Directory from './pages/Directory/Directory';
 import PersonaPlanner from './pages/PersonaPlanner/PersonaPlanner';
 import NerdMode from './pages/NerdMode/NerdMode';
 import Profile from './pages/Profile/Profile';
+import AdminDashboard from './pages/Admin/AdminDashboard';
 
 import SignIn from './pages/Auth/SignIn';
 import SignUp from './pages/Auth/SignUp';
@@ -39,10 +40,10 @@ function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/directory" element={<Directory />} />
-
                 <Route path="/persona-planner" element={<PersonaPlanner />} />
                 <Route path="/nerd-mode" element={<NerdMode />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/admin" element={<AdminDashboard />} />
                 <Route path="/auth/signin" element={<SignIn />} />
                 <Route path="/auth/signup" element={<SignUp />} />
                 <Route path="/debug/gemini" element={<GeminiTest />} />

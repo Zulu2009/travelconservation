@@ -20,12 +20,24 @@ const AgenticSystemTest: React.FC = () => {
     setLoading(prev => ({ ...prev, [testName]: true }));
     
     try {
-      const testFunction = httpsCallable(functions, functionName);
-      const result = await testFunction({});
+      // Call as HTTP endpoint instead of callable function
+      const response = await fetch(`https://us-central1-travelconservation-b4f04.cloudfunctions.net/${functionName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const result = await response.json();
       
       setTestResults(prev => ({
         ...prev,
-        [testName]: result.data as TestResult
+        [testName]: result as TestResult
       }));
     } catch (error) {
       console.error(`Error in ${testName}:`, error);
