@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { personas, Persona } from '../../data/personas';
-import ResearchEnabledChat from '../../components/PersonaPlanner/ResearchEnabledChat';
+import PersonaChat from '../../components/PersonaPlanner/PersonaChat';
 import { seedResearchDatabase } from '../../data/researchDatabase';
 
 const PersonaPlanner: React.FC = () => {
@@ -199,9 +199,9 @@ const PersonaPlanner: React.FC = () => {
         </DialogTitle>
         <DialogContent sx={{ p: 0, display: 'flex', flexDirection: 'column', height: '100%' }}>
           {selectedPersona && (
-            <ResearchEnabledChat 
+            <PersonaChat 
               selectedPersona={selectedPersona}
-              onTripRecommendation={(rec) => console.log('Trip recommendation:', rec)}
+              onTripRecommendation={(rec: any) => console.log('Trip recommendation:', rec)}
             />
           )}
         </DialogContent>
