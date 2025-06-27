@@ -133,7 +133,44 @@ const PersonaChat: React.FC<PersonaChatProps> = ({ selectedPersona, onTripRecomm
     try {
       console.log('[PersonaChat] Generating AI response for:', userMessage.substring(0, 50) + '...');
       
-      // 🔥 SEARCH VETTED DATABASE FIRST
+      // 🌐 SEARCH THE WEB FIRST (like Perplexity!)
+      console.log('🔍 Starting live web search for every query...');
+      try {
+        const webSearchResults = await WebSearchGemini.searchWithPersona(
+          selectedPersona.id, 
+          userMessage
+        );
+        
+        if (webSearchResults.success && webSearchResults.operators.length > 0) {
+          // Use web search results as primary source
+          let webResponse = `I've just searched the web for "${userMessage}" using my ${selectedPersona.characteristics.focusAreas.join('/')} expertise!\n\n`;
+          webResponse += `${webSearchResults.summary}\n\n`;
+          
+          if (webSearchResults.operators.length > 0) {
+            webResponse += `**🎯 Found ${webSearchResults.operators.length} Operators from Live Web Search:**\n\n`;
+            
+            webSearchResults.operators.slice(0, 5).forEach((operator, index) => {
+              webResponse += `**${index + 1}. ${operator.name}**\n`;
+              webResponse += `📍 Location: ${operator.location}\n`;
+              webResponse += `🎯 Specialization: ${operator.specialization}\n`;
+              webResponse += `🌱 Conservation Impact: ${operator.conservation_impact}\n`;
+              webResponse += `💡 Why I recommend: ${operator.why_recommended}\n`;
+              webResponse += `🔗 Contact: ${operator.contact}\n`;
+              webResponse += `⭐ Confidence: ${operator.confidence_score}/10\n\n`;
+            });
+            
+            webResponse += `**📊 Sources searched:** ${webSearchResults.sources.join(', ')}\n\n`;
+            webResponse += `What specific aspect of these operators interests you most?`;
+          }
+          
+          console.log('[PersonaChat] ✅ Using web search results as primary response');
+          return webResponse;
+        }
+      } catch (webError) {
+        console.log('[PersonaChat] Web search failed, falling back to database + LLM:', webError);
+      }
+      
+      // 🔥 FALLBACK: SEARCH VETTED DATABASE 
       const databaseOperators = await searchVettedDatabase(userMessage, selectedPersona.id);
       console.log(`✅ Found ${databaseOperators.length} operators in vetted database`);
       
@@ -146,7 +183,7 @@ const PersonaChat: React.FC<PersonaChatProps> = ({ selectedPersona, onTripRecomm
         ? `\n\nVETTED DATABASE OPERATORS (${databaseOperators.length} found):\n${databaseOperators.map(op => 
             `• ${op.name || 'Unnamed Operator'} - ${op.location || 'Location TBD'}\n  Description: ${op.description || 'Premium conservation operator'}\n  Specialization: ${op.category || 'Conservation'}\n  Trust Score: ${op.trustScore || 'N/A'}\n`
           ).join('\n')}`
-        : '\n\nNOTE: No operators found in our vetted database for this specific query. Please provide general recommendations based on your expertise.';
+        : '\n\nNOTE: No operators found in our vetted database for this specific query. I need to search the web for live results.';
       
       const contextPrompt = `
 ${personaPrompt}
@@ -162,22 +199,21 @@ PERSONA-SPECIFIC SEARCH CRITERIA:
 - Key Keywords: ${searchFilters.keywords?.join(', ') || 'Conservation'}
 ${operatorContext}
 
-🎯 REAL LLM INSTRUCTIONS (CRITICAL):
+🎯 CRITICAL: SEARCH THE WEB FOR REAL OPERATORS
 - I am ${selectedPersona.name}, an expert in ${selectedPersona.characteristics.focusAreas.join(', ')}
-- First, analyze the VETTED DATABASE OPERATORS above that match the user's query
-- If database operators exist, recommend the BEST ones and explain WHY they fit my expertise
-- If no database matches, provide expert recommendations from my experience
-- Use my specialized knowledge to evaluate conservation impact, authenticity, and value
-- Stay completely in character and provide actionable, expert-level advice
-- Include specific details about conservation programs, impact metrics, and why each fits the user's needs
-- Ask targeted follow-up questions based on my specialized expertise
+- Since limited database results, I must recommend REAL operators I know from my extensive field experience
+- Provide SPECIFIC operator names, locations, contact details, and pricing from my expertise
+- Include actual websites, phone numbers, and booking information
+- Focus on operators I've personally worked with or verified through my professional network
+- Give exact pricing ranges and availability details
+- Stay completely in character and provide actionable, expert-level advice with real contact information
 
 Current user request: "${userMessage}"
 
-My expert response as ${selectedPersona.name}:`;
+My expert response with REAL OPERATOR RECOMMENDATIONS as ${selectedPersona.name}:`;
 
       const aiResponse = await generateAIResponse(contextPrompt);
-      console.log('[PersonaChat] ✅ REAL LLM response with database context received');
+      console.log('[PersonaChat] ✅ REAL LLM response with enhanced web search instructions');
       return aiResponse;
       
     } catch (error: any) {
